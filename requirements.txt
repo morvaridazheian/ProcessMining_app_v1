@@ -1,0 +1,6 @@
+dash==2.18.2
+plotly
+pandas
+flask
+google-colab
+pm4py
