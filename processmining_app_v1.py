@@ -6,6 +6,7 @@ from dash import Dash, dcc, html, Input, Output, dash_table
 from flask import Flask
 import base64
 import io
+import os  # Added for dynamic port setting
 
 # =============== Generate a Simple Event Log for Testing =============== #
 def generate_sample_event_log():
@@ -49,8 +50,6 @@ event_log = generate_sample_event_log()
 # =============== Flask + Dash App Setup =============== #
 server = Flask(__name__)  # Create Flask app
 app = Dash(__name__, server=server)  # Dash app inside Flask
-
-server = app.server
 
 # =============== Dash Layout (User Interface) =============== #
 app.layout = html.Div([
@@ -160,6 +159,7 @@ def compliance_analysis(contents):
         dash_table.DataTable(data=compliance_issues[['case_id', 'process_sequence']].drop_duplicates().to_dict('records'), page_size=5)
     ])
 
-# =============== Run the App =============== #
+# =============== Run the App with Dynamic Port =============== #
 if __name__ == '__main__':
-    app.run_server(debug=True, port=8050, host='0.0.0.0')
+    port = int(os.environ.get("PORT", 10000))  # Get Render-assigned port or default to 10000
+    app.run_server(debug=True, port=port, host='0.0.0.0')
