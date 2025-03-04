@@ -1,6 +1,5 @@
-dash==2.18.2
-plotly
 pandas
+dash
 flask
-google-colab
-pm4py
+plotly
+gunicorn
