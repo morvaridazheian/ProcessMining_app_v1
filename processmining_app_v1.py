@@ -6,7 +6,7 @@ from dash import Dash, dcc, html, Input, Output, dash_table
 from flask import Flask
 import base64
 import io
-import os  # Added for dynamic port setting
+import os  # Import for dynamic port setting
 
 # =============== Generate a Simple Event Log for Testing =============== #
 def generate_sample_event_log():
@@ -28,6 +28,7 @@ def generate_sample_event_log():
 
 # =============== Data Validation Function =============== #
 def validate_data(df):
+    """Validates the uploaded data for required columns and correct timestamp format."""
     try:
         df['timestamp'] = pd.to_datetime(df['timestamp'])
     except Exception as e:
@@ -40,6 +41,7 @@ def validate_data(df):
 
 # =============== Decode File Function =============== #
 def decode_file(contents):
+    """Decodes uploaded CSV file."""
     content_type, content_string = contents.split(',')
     decoded = base64.b64decode(content_string)
     return io.StringIO(decoded.decode('utf-8'))
@@ -48,7 +50,7 @@ def decode_file(contents):
 event_log = generate_sample_event_log()
 
 # =============== Flask + Dash App Setup =============== #
-server = Flask(__name__)  # Create Flask app
+server = Flask(__name__)  # Flask app
 app = Dash(__name__, server=server)  # Dash app inside Flask
 
 # =============== Dash Layout (User Interface) =============== #
@@ -66,9 +68,12 @@ app.layout = html.Div([
     ])
 ])
 
-# =============== Callbacks for Data Processing =============== #
+# =============== Callbacks =============== #
+
+# ---- Data Overview ---- #
 @app.callback(Output('data-overview', 'children'), Input('upload-data', 'contents'))
 def update_data_overview(contents):
+    """Displays a summary of the uploaded or sample event log data."""
     df = event_log if contents is None else pd.read_csv(decode_file(contents))
 
     try:
@@ -84,8 +89,10 @@ def update_data_overview(contents):
         dash_table.DataTable(data=df.head(5).to_dict('records'), page_size=5)
     ])
 
+# ---- Process Bottlenecks ---- #
 @app.callback(Output('bottleneck-graph', 'figure'), Input('upload-data', 'contents'))
 def detect_bottlenecks(contents):
+    """Detects bottlenecks by calculating average time spent per activity."""
     df = event_log if contents is None else pd.read_csv(decode_file(contents))
 
     try:
@@ -100,8 +107,10 @@ def detect_bottlenecks(contents):
 
     return px.bar(avg_times, x='activity', y='time_diff_minutes', title="Average Time Spent Per Activity")
 
+# ---- Process Loops ---- #
 @app.callback(Output('loop-summary', 'children'), Input('upload-data', 'contents'))
 def detect_loops(contents):
+    """Detects process loops (repeated activities within cases)."""
     df = event_log if contents is None else pd.read_csv(decode_file(contents))
 
     try:
@@ -121,8 +130,10 @@ def detect_loops(contents):
 
     return html.Div([html.H3("Process Loops"), *loop_details])
 
+# ---- Process Variants (FIXED) ---- #
 @app.callback(Output('variant-summary', 'children'), Input('upload-data', 'contents'))
 def analyze_variants(contents):
+    """Analyzes process variants by extracting unique activity sequences."""
     df = event_log if contents is None else pd.read_csv(decode_file(contents))
 
     try:
@@ -130,18 +141,24 @@ def analyze_variants(contents):
     except ValueError as e:
         return html.Div([html.H3(f"Error: {str(e)}")])
 
-    variants = df.groupby('case_id')['activity'].apply(tuple).value_counts()
-    if variants.empty:
+    df = df.sort_values(by=['case_id', 'timestamp'])
+    variant_series = df.groupby('case_id')['activity'].apply(tuple)
+    variant_counts = variant_series.value_counts().reset_index()
+    variant_counts.columns = ['Process Variant', 'Count']
+
+    if variant_counts.empty:
         return html.Div([html.H3("No Process Variants Found")])
 
-    top_10_variants = pd.DataFrame(variants).reset_index().rename(columns={'activity': 'Process Variant', 0: 'Count'}).head(10)
+    top_10_variants = variant_counts.head(10)
     variant_details = [html.Div([html.H4(f"✅ Variant {idx + 1}: {' → '.join(row['Process Variant'])} (Count: {row['Count']})")])
                        for idx, row in top_10_variants.iterrows()]
 
     return html.Div([html.H3("Top 10 Process Variants"), *variant_details])
 
+# ---- Compliance Analysis ---- #
 @app.callback(Output('compliance-summary', 'children'), Input('upload-data', 'contents'))
 def compliance_analysis(contents):
+    """Checks if process instances follow the expected sequence."""
     df = event_log if contents is None else pd.read_csv(decode_file(contents))
 
     try:
@@ -149,9 +166,9 @@ def compliance_analysis(contents):
     except ValueError as e:
         return html.Div([html.H3(f"Error: {str(e)}")])
 
-    expected_sequence = ["Start", "Review", "Approve", "End"]
+    expected_sequence = ("Start", "Review", "Approve", "End")
     df['process_sequence'] = df.groupby('case_id')['activity'].transform(lambda x: tuple(x))
-    compliance_issues = df[~df['process_sequence'].isin([tuple(expected_sequence)])]
+    compliance_issues = df[df['process_sequence'] != expected_sequence]
 
     return html.Div([
         html.H3("Compliance Issues"),
@@ -159,7 +176,7 @@ def compliance_analysis(contents):
         dash_table.DataTable(data=compliance_issues[['case_id', 'process_sequence']].drop_duplicates().to_dict('records'), page_size=5)
     ])
 
-# =============== Run the App with Dynamic Port =============== #
+# =============== Run the App =============== #
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))  # Get Render-assigned port or default to 10000
+    port = int(os.environ.get("PORT", 10000))  
     app.run_server(debug=True, port=port, host='0.0.0.0')
